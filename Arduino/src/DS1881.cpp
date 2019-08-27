@@ -17,9 +17,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
+
+This class always enabled zero-cross. This induces a latency to wiper change.
+Class also configures the device for maximum resolution.
 */
 
 #include "DS1881.h"
+#include <Wire.h>
 
 #define DS1881_REG_WR0   0x00
 #define DS1881_REG_WR1   0x40
@@ -36,9 +40,8 @@ limitations under the License.
 * Constructors/destructors, class initialization functions and so-forth...
 *******************************************************************************/
 
-DS1881::DS1881(uint8_t addr) : I2CDevice(addr) {
+DS1881::DS1881(uint8_t addr) : _ADDR(addr) {
   dev_init    = false;
-  preserve_state_on_destroy = false;
 }
 
 
@@ -46,69 +49,33 @@ DS1881::~DS1881() {
 }
 
 
-/*******************************************************************************
-* ___     _       _                      These members are mandatory overrides
-*  |   / / \ o   | \  _     o  _  _      for implementing I/O callbacks. They
-* _|_ /  \_/ o   |_/ (/_ \/ | (_ (/_     are also implemented by Adapters.
-*******************************************************************************/
-int8_t DS1881::io_op_callback(BusOp* op) {
-  I2CBusOp* completed = (I2CBusOp*) op;
-  uint8_t byte0 = *(completed->buf+0);
-
-  switch (completed->get_opcode()) {
-    case BusOpcode::RX:
-      if (!completed->hasFault()) {
-        dev_init = true;
-      }
-      switch (byte0 & 0xC0) {
-        case DS1881_REG_WR0:
-        case DS1881_REG_WR1:
-          break;
-        case DS1881_REG_CONF:
-          preserve_state_on_destroy = !(byte0 & 0x04);
-          if (0x02 != (byte0 & 0x03)) {
-            // Enforces zero-cross and high-resolution.
-            registers[2] = preserve_state_on_destroy ? 0x86 : 0x82;
-            writeX(-1, 1, &registers[2]);
-          }
-          break;
-        default:
-          break;
-      }
-      break;
-    case BusOpcode::TX:
-      switch (byte0 & 0xC0) {
-        case DS1881_REG_WR0:
-        case DS1881_REG_WR1:
-        case DS1881_REG_CONF:
-        default:
-          break;
-      }
-      break;
-    default:
-      break;
-  }
-  return 0;
-}
-
-
 /*
 * Dump this item to the dev log.
 */
-void DS1881::printDebug(StringBuilder* output) {
-  output->concat("DS1881 digital potentiometer");
-  output->concat(PRINT_DIVIDER_1_STR);
-  I2CDevice::printDebug(output);
+void DS1881::printDebug() {
+  Serial.print("DS1881 digital potentiometer");
 
   if (!dev_init) {
-    output->concat("\tNot initialized\n");
+    Serial.println("\tNot initialized\n");
     return;
   }
 
-  for (int i = 0; i < 1; i++) {
-    output->concatf("\tPOT %d: 0x%02x\n", i, 0x3F & registers[i]);
+  for (int i = 0; i < 2; i++) {
+    Serial.print("\n\tPOT ");
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.print(0x3F & registers[i], DEC);
   }
-  output->concatf("\n");
+  Serial.print("\n\tCONF:  0x");
+  Serial.print((int8_t) registers[2], HEX);
+  Serial.print("\n\talt_values[0]:  ");
+  Serial.print((int8_t) alt_values[0], DEC);
+  Serial.print("\n\talt_values[1]:  ");
+  Serial.print((int8_t) alt_values[1], DEC);
+  Serial.print("\n\tRange:          ");
+  Serial.print(getRange(), DEC);
+  Serial.print("\n\tZero-cross:     ");
+  Serial.println((zerocrossWait()) ? "Enabled":"Disabled");
 }
 
 
@@ -121,9 +88,11 @@ void DS1881::printDebug(StringBuilder* output) {
 */
 DIGITALPOT_ERROR DS1881::init() {
   DIGITALPOT_ERROR return_value = DIGITALPOT_ERROR::BUS;
-  if (readX(-1, 3, registers)) {
+  if (0 == _read_registers()) {
     return_value = DIGITALPOT_ERROR::NO_ERROR;
   }
+  Serial.print("init() returns ");
+  Serial.println((int8_t) return_value, DEC);
   return return_value;
 }
 
@@ -136,24 +105,23 @@ DIGITALPOT_ERROR DS1881::setValue(uint8_t pot, uint8_t val) {
   if (!dev_init)  return DIGITALPOT_ERROR::DEVICE_DISABLED;
 
   DIGITALPOT_ERROR return_value = DIGITALPOT_ERROR::NO_ERROR;
-  uint8_t tmp_val = strict_min(val, (uint8_t) 63);
-  switch (tmp_val) {
-    case 0:
-      return_value = DIGITALPOT_ERROR::PEGGED_MIN;
-      break;
-    case 63:
-      return_value = (tmp_val == val) ? DIGITALPOT_ERROR::PEGGED_MAX : DIGITALPOT_ERROR::ALREADY_AT_MAX;
-      break;
-    default:
-      break;
+  uint8_t range = (uint8_t) getRange();
+  uint8_t tmp_val = min(val, range);
+  if (range == tmp_val) {
+    return_value = (tmp_val == val) ? DIGITALPOT_ERROR::PEGGED_MAX : DIGITALPOT_ERROR::ALREADY_AT_MAX;
   }
+  else if (0 == tmp_val) {
+    return_value = DIGITALPOT_ERROR::PEGGED_MIN;
+  }
+
   if (0 <= (int8_t) return_value) {
-    alt_values[pot] = registers[pot];
-    registers[pot] = (1 == pot ? DS1881_REG_WR1 : DS1881_REG_WR0) & tmp_val;
-    if (!writeX(-1, 1, &registers[pot])) {
-      return_value = DIGITALPOT_ERROR::BUS;
+    registers[pot] = (pot << 6) | tmp_val;
+    if (0 == _write_register(pot << 6, registers[pot])) {
+      return_value = DIGITALPOT_ERROR::NO_ERROR;
     }
   }
+  Serial.print("setValue(pot) returns ");
+  Serial.println((int8_t) return_value, DEC);
   return return_value;
 }
 
@@ -162,34 +130,11 @@ DIGITALPOT_ERROR DS1881::setValue(uint8_t pot, uint8_t val) {
 * Set the value of the given wiper to the given value.
 */
 DIGITALPOT_ERROR DS1881::setValue(uint8_t val) {
-  if (!dev_init)  return DIGITALPOT_ERROR::DEVICE_DISABLED;
-  DIGITALPOT_ERROR return_value = DIGITALPOT_ERROR::NO_ERROR;
-  uint8_t tmp_val = strict_min(val, (uint8_t) 63);
-  switch (tmp_val) {
-    case 0:
-      return_value = DIGITALPOT_ERROR::PEGGED_MIN;
-      break;
-    case 63:
-      return_value = (tmp_val == val) ? DIGITALPOT_ERROR::PEGGED_MAX : DIGITALPOT_ERROR::ALREADY_AT_MAX;
-      break;
-    default:
-      break;
-  }
-  if (0 <= (int8_t) return_value) {
-    alt_values[0] = registers[0];
-    alt_values[1] = registers[1];
-    registers[0] = DS1881_REG_WR0 & tmp_val;
-    registers[1] = DS1881_REG_WR1 & tmp_val;
-    if (!writeX(-1, 2, registers)) {
-      return_value = DIGITALPOT_ERROR::BUS;
-    }
+  DIGITALPOT_ERROR return_value = setValue(0, val);
+  if (DIGITALPOT_ERROR::NO_ERROR == return_value) {
+    return_value = setValue(1, val);
   }
   return return_value;
-}
-
-
-DIGITALPOT_ERROR DS1881::reset(uint8_t val) {
-  return setValue(val);
 }
 
 
@@ -198,7 +143,96 @@ DIGITALPOT_ERROR DS1881::reset(uint8_t val) {
 * Disabling the device stacks the current value into alt_values and then sets to mute.
 * Retains wiper settings.
 */
-DIGITALPOT_ERROR DS1881::_enable(bool x) {
+DIGITALPOT_ERROR DS1881::enable(bool x) {
   DIGITALPOT_ERROR return_value = DIGITALPOT_ERROR::NO_ERROR;
+  if (x ^ _enabled) {
+    if (x) {
+      _write_register(DS1881_REG_WR0, alt_values[0]);
+      _write_register(DS1881_REG_WR1, alt_values[1]);
+    }
+    else {
+      uint8_t range = (uint8_t) getRange();
+      alt_values[0] = registers[0];
+      alt_values[1] = registers[1];
+      _write_register(DS1881_REG_WR0, range);
+      _write_register(DS1881_REG_WR1, range);
+    }
+    _enabled = x;
+  }
+  return return_value;
+}
+
+
+/*
+* Make this state non-volatile.
+*/
+DIGITALPOT_ERROR DS1881::storeWipers() {
+  DIGITALPOT_ERROR return_value = DIGITALPOT_ERROR::BUS;
+  // Temporarily change the wiper volatility bit to write to the NVM...
+  if (0 == _write_register(DS1881_REG_CONF, (registers[2] & 0x07) & ~0x04)) {
+    // Store the wiper(s).
+    if (0 == _write_register(DS1881_REG_WR0, registers[0])) {
+      if (0 == _write_register(DS1881_REG_WR1, registers[1])) {
+        // Set the wipers back to volatile.
+        //if (0 == _write_register(DS1881_REG_CONF, (registers[2] & 0x07) | 0x04)) {
+          return_value = DIGITALPOT_ERROR::NO_ERROR;
+        //}
+      }
+    }
+  }
+
+  return return_value;
+}
+
+
+DIGITALPOT_ERROR DS1881::zerocrossWait(bool en) {
+  int8_t return_value = _write_register(DS1881_REG_CONF, (en ? (registers[2] | 0x02) : (registers[2] & ~0x02)));
+  return (0 == return_value) ? DIGITALPOT_ERROR::NO_ERROR : DIGITALPOT_ERROR::BUS;
+}
+
+
+DIGITALPOT_ERROR DS1881::setRange(uint8_t val) {
+  int8_t return_value = -1;
+  switch (val) {
+    case 33:
+    case 63:
+      return_value = _write_register(DS1881_REG_CONF, ((33 == val) ? (registers[2] | 0x01) : (registers[2] & ~0x01)));
+    default:
+      break;
+  }
+  return (0 == return_value) ? DIGITALPOT_ERROR::NO_ERROR : DIGITALPOT_ERROR::BUS;
+}
+
+
+
+int8_t DS1881::_write_register(uint8_t reg, uint8_t val) {
+  int8_t return_value = -1;
+  if (reg == (reg & 0xC0)) {
+    Wire.beginTransmission(_ADDR);
+    Wire.write((0x3F & val) | reg);
+    Wire.endTransmission();
+    registers[reg >> 6] = val;
+    return_value = 0;
+  }
+  return return_value;
+}
+
+
+int8_t DS1881::_read_registers() {
+  int8_t return_value = 0;
+	Wire.requestFrom(_ADDR, (uint8_t) 3);
+
+  registers[0] = 0x3F & Wire.receive();
+  registers[1] = 0x3F & Wire.receive();
+  registers[2] = 0x3F & Wire.receive();
+
+  if (0x04 != (registers[2] & 0x04)) {
+    // Enforces volatile wiper operation unless specified otherwise.
+    _write_register(DS1881_REG_CONF, (registers[2] & 0x07) | 0x04);
+  }
+
+  Serial.print("_read_registers() returns ");
+  Serial.println((int8_t) return_value, DEC);
+  dev_init = true;
   return return_value;
 }

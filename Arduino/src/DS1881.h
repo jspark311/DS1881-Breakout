@@ -22,12 +22,11 @@ limitations under the License.
 #ifndef __DS1881_DRIVER_H__
 #define __DS1881_DRIVER_H__
 
-#include <Platform/Peripherals/I2C/I2CAdapter.h>
-#include "Drivers/DigitalPots/DigitalPots.h"
+#include <Arduino.h>
+
 
 /* Hardware-defined registers */
 #define DS1881_BASE_I2C_ADDR   0x28
-
 
 
 enum class DIGITALPOT_ERROR : int8_t {
@@ -44,51 +43,41 @@ enum class DIGITALPOT_ERROR : int8_t {
 
 
 
-class DS1881 : public I2CDevice {
+class DS1881 {
   public:
     DS1881(uint8_t address);
     ~DS1881();
 
-    /* Overrides from I2CDevice... */
-    int8_t io_op_callback(BusOp*);
-    void printDebug(StringBuilder*);
-
-    DIGITALPOT_ERROR init();                              // Perform bus-related init tasks.
-    DIGITALPOT_ERROR setValue(uint8_t val);               // Sets the value of both pots.
-    DIGITALPOT_ERROR setValue(uint8_t pot, uint8_t val);  // Sets the value of the given pot.
-    DIGITALPOT_ERROR reset(uint8_t);                      // Sets all volumes levels to given.
-
-    inline void preserveOnDestroy(bool x) {
-      preserve_state_on_destroy = x;
-    };
-
-    /*
-    * Will take the device out of shutdown mode and set all the wipers
-    *   to their minimum values.
-    */
-    inline DIGITALPOT_ERROR reset() {    return reset(0x00);  };
+    void printDebug();
 
     inline uint8_t getValue(uint8_t pot) {
       return (pot > 1) ? 0 : 0x3F & registers[pot];
     };
+    DIGITALPOT_ERROR init();                              // Perform bus-related init tasks.
+    DIGITALPOT_ERROR setValue(uint8_t val);               // Sets the value of both pots.
+    DIGITALPOT_ERROR setValue(uint8_t pot, uint8_t val);  // Sets the value of the given pot.
+    DIGITALPOT_ERROR enable(bool);                        //
 
-    inline bool enabled() {   return true; };  // This device can't be disabled.
-    inline DIGITALPOT_ERROR disable() {  return _enable(false);  };
-    inline DIGITALPOT_ERROR enable() {   return _enable(true);   };
+    inline bool enabled() {   return _enabled; };
+
+    DIGITALPOT_ERROR storeWipers();
+    DIGITALPOT_ERROR zerocrossWait(bool enable);
+    inline bool zerocrossWait() {  return (registers[2] & 0x02);  };
 
     /* Returns the maximum value of any single potentiometer. */
-    inline uint16_t getRange() {  return 0x00FF;      };
-
+    inline uint16_t getRange() {  return ((registers[2] & 0x01) ? 33 : 63);  };
+    DIGITALPOT_ERROR setRange(uint8_t);
 
 
   private:
-    bool    dev_init;
-    bool    preserve_state_on_destroy;
+    const   uint8_t _ADDR;
+    bool    dev_init = false;
+    bool    _enabled = false;
+    uint8_t registers[3]  = {0, 0, 0};
+    uint8_t alt_values[2] = {0, 0};
 
-    uint8_t registers[3];
-    uint8_t alt_values[2];
-
-    DIGITALPOT_ERROR _enable(bool);
+    int8_t _read_registers();
+    int8_t _write_register(uint8_t reg, uint8_t val);
 };
 
 #endif   // __DS1881_DRIVER_H__
