@@ -206,33 +206,32 @@ DIGITALPOT_ERROR DS1881::setRange(uint8_t val) {
 
 
 int8_t DS1881::_write_register(uint8_t reg, uint8_t val) {
-  int8_t return_value = -1;
+  int8_t ret = -1;
   if (reg == (reg & 0xC0)) {
     Wire.beginTransmission(_ADDR);
     Wire.write((0x3F & val) | reg);
-    Wire.endTransmission();
-    registers[reg >> 6] = val;
-    return_value = 0;
+    if (0 == Wire.endTransmission()) {
+      registers[reg >> 6] = val;
+      ret = 0;
+    }
   }
-  return return_value;
+  return ret;
 }
 
 
 int8_t DS1881::_read_registers() {
-  int8_t return_value = 0;
-	Wire.requestFrom(_ADDR, (uint8_t) 3);
-
-  registers[0] = 0x3F & Wire.receive();
-  registers[1] = 0x3F & Wire.receive();
-  registers[2] = 0x3F & Wire.receive();
+  int8_t ret = -1;
+  if (3 == Wire.requestFrom(_ADDR, (uint8_t) 3)) {
+    ret = 0;
+    registers[0] = 0x3F & Wire.receive();
+    registers[1] = 0x3F & Wire.receive();
+    registers[2] = 0x3F & Wire.receive();
+  }
 
   if (0x04 != (registers[2] & 0x04)) {
     // Enforces volatile wiper operation unless specified otherwise.
-    _write_register(DS1881_REG_CONF, (registers[2] & 0x07) | 0x04);
+    ret = _write_register(DS1881_REG_CONF, (registers[2] & 0x07) | 0x04);
   }
-
-  Serial.print("_read_registers() returns ");
-  Serial.println((int8_t) return_value, DEC);
-  dev_init = true;
-  return return_value;
+  dev_init = (0 == ret);
+  return ret;
 }
