@@ -30,6 +30,21 @@ Class also configures the device for maximum resolution.
 #define DS1881_REG_CONF  0x80
 
 
+const char* const DS1881::errorToStr(DIGITALPOT_ERROR err) {
+  switch (err) {
+    case DIGITALPOT_ERROR::DEVICE_DISABLED:  return "DEVICE_DISABLED";
+    case DIGITALPOT_ERROR::PEGGED_MAX:       return "PEGGED_MAX";
+    case DIGITALPOT_ERROR::PEGGED_MIN:       return "PEGGED_MIN";
+    case DIGITALPOT_ERROR::NO_ERROR:         return "NO_ERROR";
+    case DIGITALPOT_ERROR::ABSENT:           return "ABSENT";
+    case DIGITALPOT_ERROR::BUS:              return "BUS";
+    case DIGITALPOT_ERROR::ALREADY_AT_MAX:   return "ALREADY_AT_MAX";
+    case DIGITALPOT_ERROR::ALREADY_AT_MIN:   return "ALREADY_AT_MIN";
+    case DIGITALPOT_ERROR::INVALID_POT:      return "INVALID_POT";
+    default:                                 return "UNKNOWN";
+  }
+}
+
 
 /*******************************************************************************
 *   ___ _              ___      _ _              _      _
@@ -91,9 +106,12 @@ DIGITALPOT_ERROR DS1881::init() {
   if (0 == _read_registers()) {
     return_value = DIGITALPOT_ERROR::NO_ERROR;
   }
-  Serial.print("init() returns ");
-  Serial.println((int8_t) return_value, DEC);
   return return_value;
+}
+
+
+DIGITALPOT_ERROR DS1881::refresh() {
+  return (0 != _read_registers()) ? DIGITALPOT_ERROR::BUS : DIGITALPOT_ERROR::NO_ERROR;
 }
 
 
@@ -104,25 +122,20 @@ DIGITALPOT_ERROR DS1881::setValue(uint8_t pot, uint8_t val) {
   if (pot > 1)    return DIGITALPOT_ERROR::INVALID_POT;
   if (!dev_init)  return DIGITALPOT_ERROR::DEVICE_DISABLED;
 
-  DIGITALPOT_ERROR return_value = DIGITALPOT_ERROR::NO_ERROR;
+  DIGITALPOT_ERROR ret = (0 == val) ? DIGITALPOT_ERROR::PEGGED_MAX : DIGITALPOT_ERROR::NO_ERROR;
   uint8_t range = (uint8_t) getRange();
   uint8_t tmp_val = min(val, range);
   if (range == tmp_val) {
-    return_value = (tmp_val == val) ? DIGITALPOT_ERROR::PEGGED_MAX : DIGITALPOT_ERROR::ALREADY_AT_MAX;
-  }
-  else if (0 == tmp_val) {
-    return_value = DIGITALPOT_ERROR::PEGGED_MIN;
+    ret = (tmp_val == val) ? DIGITALPOT_ERROR::PEGGED_MIN : DIGITALPOT_ERROR::ALREADY_AT_MIN;
   }
 
-  if (0 <= (int8_t) return_value) {
+  if (0 <= (int8_t) ret) {
     registers[pot] = (pot << 6) | tmp_val;
-    if (0 == _write_register(pot << 6, registers[pot])) {
-      return_value = DIGITALPOT_ERROR::NO_ERROR;
+    if (0 != _write_register(pot << 6, registers[pot])) {
+      ret = DIGITALPOT_ERROR::BUS;
     }
   }
-  Serial.print("setValue(pot) returns ");
-  Serial.println((int8_t) return_value, DEC);
-  return return_value;
+  return ret;
 }
 
 
@@ -131,7 +144,7 @@ DIGITALPOT_ERROR DS1881::setValue(uint8_t pot, uint8_t val) {
 */
 DIGITALPOT_ERROR DS1881::setValue(uint8_t val) {
   DIGITALPOT_ERROR return_value = setValue(0, val);
-  if (DIGITALPOT_ERROR::NO_ERROR == return_value) {
+  if (0 <= (int8_t) return_value) {
     return_value = setValue(1, val);
   }
   return return_value;

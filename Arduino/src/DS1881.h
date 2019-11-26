@@ -57,6 +57,7 @@ class DS1881 {
     DIGITALPOT_ERROR setValue(uint8_t val);               // Sets the value of both pots.
     DIGITALPOT_ERROR setValue(uint8_t pot, uint8_t val);  // Sets the value of the given pot.
     DIGITALPOT_ERROR enable(bool);                        //
+    DIGITALPOT_ERROR refresh();                           // Forces a shadow refresh from hardware.
 
     inline bool enabled() {   return _enabled; };
 
@@ -67,6 +68,8 @@ class DS1881 {
     /* Returns the maximum value of any single potentiometer. */
     inline uint16_t getRange() {  return ((registers[2] & 0x01) ? 33 : 63);  };
     DIGITALPOT_ERROR setRange(uint8_t);
+
+    static const char* const errorToStr(DIGITALPOT_ERROR);
 
 
   private:
