@@ -23,7 +23,6 @@ Class also configures the device for maximum resolution.
 */
 
 #include "DS1881.h"
-#include <Wire.h>
 
 #define DS1881_REG_WR0   0x00
 #define DS1881_REG_WR1   0x40
@@ -104,8 +103,11 @@ void DS1881::printDebug() {
 /*
 * Call to read the device and cause this class's state to reflect that of the device.
 */
-DIGITALPOT_ERROR DS1881::init() {
+DIGITALPOT_ERROR DS1881::init(TwoWire* b) {
   DIGITALPOT_ERROR ret = DIGITALPOT_ERROR::BUS;
+  if (nullptr != b) {
+    _bus = b;
+  }
 
   if (_from_blob()) {
     // Copy the blob-imparted values and clear the flag so we don't do this again.
@@ -237,12 +239,14 @@ DIGITALPOT_ERROR DS1881::setRange(uint8_t val) {
 
 int8_t DS1881::_write_register(uint8_t reg, uint8_t val) {
   int8_t ret = -1;
-  if (reg == (reg & 0xC0)) {
-    Wire.beginTransmission(_ADDR);
-    Wire.write((0x3F & val) | reg);
-    if (0 == Wire.endTransmission()) {
-      registers[reg >> 6] = val;
-      ret = 0;
+  if (nullptr != _bus) {
+    if (reg == (reg & 0xC0)) {
+      _bus->beginTransmission(_ADDR);
+      _bus->write((0x3F & val) | reg);
+      if (0 == _bus->endTransmission()) {
+        registers[reg >> 6] = val;
+        ret = 0;
+      }
     }
   }
   return ret;
@@ -251,21 +255,20 @@ int8_t DS1881::_write_register(uint8_t reg, uint8_t val) {
 
 int8_t DS1881::_read_registers() {
   int8_t ret = -1;
-  if (3 == Wire.requestFrom(_ADDR, (uint8_t) 3)) {
-    ret = 0;
-    registers[0] = 0x3F & Wire.receive();
-    registers[1] = 0x3F & Wire.receive();
-    registers[2] = 0x3F & Wire.receive();
-  }
+  if (nullptr != _bus) {
+    if (3 == _bus->requestFrom(_ADDR, (uint8_t) 3)) {
+      ret = 0;
+      registers[0] = 0x3F & _bus->receive();
+      registers[1] = 0x3F & _bus->receive();
+      registers[2] = 0x3F & _bus->receive();
+    }
 
-  if (0x06 != (registers[2] & 0x07)) {
-    // Enforces high-res volatile wiper operation unless specified otherwise.
-    ret = _write_register(DS1881_REG_CONF, (registers[2] & 0xFE) | 0x06);
+    if (0x06 != (registers[2] & 0x07)) {
+      // Enforces high-res volatile wiper operation unless specified otherwise.
+      ret = _write_register(DS1881_REG_CONF, (registers[2] & 0xFE) | 0x06);
+    }
+    _ds_set_flag(DS1881_FLAG_INITIALIZED, (0 == ret));
   }
-  if (registers[0] ) {
-
-  }
-  _ds_set_flag(DS1881_FLAG_INITIALIZED, (0 == ret));
   return ret;
 }
 

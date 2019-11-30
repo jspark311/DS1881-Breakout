@@ -23,6 +23,7 @@ limitations under the License.
 #define __DS1881_DRIVER_H__
 
 #include <Arduino.h>
+#include <Wire.h>
 
 #define DS1881_BASE_I2C_ADDR        0x28
 #define DS1881_SERIALIZE_VERSION    0x01
@@ -65,7 +66,8 @@ class DS1881 {
     inline uint8_t getValue(uint8_t pot) {
       return (pot > 1) ? 0 : 0x3F & registers[pot];
     };
-    DIGITALPOT_ERROR init();                              // Perform bus-related init tasks.
+    inline DIGITALPOT_ERROR init() {  return init(_bus);  };
+    DIGITALPOT_ERROR init(TwoWire*);                      // Perform bus-related init tasks.
     DIGITALPOT_ERROR setValue(uint8_t val);               // Sets the value of both pots.
     DIGITALPOT_ERROR setValue(uint8_t pot, uint8_t val);  // Sets the value of the given pot.
     DIGITALPOT_ERROR enable(bool);                        //
@@ -88,9 +90,10 @@ class DS1881 {
 
   private:
     const uint8_t _ADDR;
-    uint8_t _flags        = 0;
-    uint8_t registers[3]  = {0, 0, 0};
-    uint8_t alt_values[2] = {0, 0};
+    uint8_t  _flags        = 0;
+    uint8_t  alt_values[2] = {0, 0};
+    TwoWire* _bus          = nullptr;
+    uint8_t  registers[3]  = {0, 0, 0};
 
     inline bool _from_blob() {   return _ds_flag(DS1881_FLAG_FROM_BLOB);  };
     inline bool _ds_flag(uint8_t _flag) {       return (_flags & _flag);  };
