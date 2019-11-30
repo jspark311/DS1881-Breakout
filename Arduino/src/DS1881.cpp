@@ -55,8 +55,11 @@ const char* const DS1881::errorToStr(DIGITALPOT_ERROR err) {
 * Constructors/destructors, class initialization functions and so-forth...
 *******************************************************************************/
 
-DS1881::DS1881(uint8_t addr) : _ADDR(addr) {
-  dev_init    = false;
+DS1881::DS1881(const uint8_t addr) : _ADDR(addr) {
+}
+
+DS1881::DS1881(const uint8_t* buf, const unsigned int len) : _ADDR(*(buf + 1)) {
+  unserialize(buf, len);
 }
 
 
@@ -70,7 +73,7 @@ DS1881::~DS1881() {
 void DS1881::printDebug() {
   Serial.print("DS1881 digital potentiometer");
 
-  if (!dev_init) {
+  if (!initialized()) {
     Serial.println("\tNot initialized\n");
     return;
   }
@@ -102,11 +105,25 @@ void DS1881::printDebug() {
 * Call to read the device and cause this class's state to reflect that of the device.
 */
 DIGITALPOT_ERROR DS1881::init() {
-  DIGITALPOT_ERROR return_value = DIGITALPOT_ERROR::BUS;
-  if (0 == _read_registers()) {
-    return_value = DIGITALPOT_ERROR::NO_ERROR;
+  DIGITALPOT_ERROR ret = DIGITALPOT_ERROR::BUS;
+
+  if (_from_blob()) {
+    // Copy the blob-imparted values and clear the flag so we don't do this again.
+    _ds_clear_flag(DS1881_FLAG_FROM_BLOB);
+    uint8_t vals[3] = {0, 0, 0};
+    for (uint8_t i = 0; i < 3; i++) {  vals[i] = registers[i];  }
+    for (uint8_t i = 0; i < 3; i++) {
+      if (0 != _write_register(i, vals[i])) {
+        return DIGITALPOT_ERROR::BUS;
+      }
+    }
+    _ds_set_flag(DS1881_FLAG_INITIALIZED);
+    ret = DIGITALPOT_ERROR::NO_ERROR;
   }
-  return return_value;
+  else if (0 == _read_registers()) {
+    ret = DIGITALPOT_ERROR::NO_ERROR;
+  }
+  return ret;
 }
 
 
@@ -119,8 +136,8 @@ DIGITALPOT_ERROR DS1881::refresh() {
 * Set the value of the given wiper to the given value.
 */
 DIGITALPOT_ERROR DS1881::setValue(uint8_t pot, uint8_t val) {
-  if (pot > 1)    return DIGITALPOT_ERROR::INVALID_POT;
-  if (!dev_init)  return DIGITALPOT_ERROR::DEVICE_DISABLED;
+  if (pot > 1)         return DIGITALPOT_ERROR::INVALID_POT;
+  if (!initialized())  return DIGITALPOT_ERROR::DEVICE_DISABLED;
 
   DIGITALPOT_ERROR ret = (0 == val) ? DIGITALPOT_ERROR::PEGGED_MAX : DIGITALPOT_ERROR::NO_ERROR;
   uint8_t range = (uint8_t) getRange();
@@ -158,7 +175,7 @@ DIGITALPOT_ERROR DS1881::setValue(uint8_t val) {
 */
 DIGITALPOT_ERROR DS1881::enable(bool x) {
   DIGITALPOT_ERROR return_value = DIGITALPOT_ERROR::NO_ERROR;
-  if (x ^ _enabled) {
+  if (x ^ enabled()) {
     if (x) {
       _write_register(DS1881_REG_WR0, alt_values[0]);
       _write_register(DS1881_REG_WR1, alt_values[1]);
@@ -170,7 +187,7 @@ DIGITALPOT_ERROR DS1881::enable(bool x) {
       _write_register(DS1881_REG_WR0, range);
       _write_register(DS1881_REG_WR1, range);
     }
-    _enabled = x;
+    _ds_set_flag(DS1881_FLAG_ENABLED, x);
   }
   return return_value;
 }
@@ -241,10 +258,78 @@ int8_t DS1881::_read_registers() {
     registers[2] = 0x3F & Wire.receive();
   }
 
-  if (0x04 != (registers[2] & 0x04)) {
-    // Enforces volatile wiper operation unless specified otherwise.
-    ret = _write_register(DS1881_REG_CONF, (registers[2] & 0x07) | 0x04);
+  if (0x06 != (registers[2] & 0x07)) {
+    // Enforces high-res volatile wiper operation unless specified otherwise.
+    ret = _write_register(DS1881_REG_CONF, (registers[2] & 0xFE) | 0x06);
   }
-  dev_init = (0 == ret);
+  if (registers[0] ) {
+
+  }
+  _ds_set_flag(DS1881_FLAG_INITIALIZED, (0 == ret));
   return ret;
+}
+
+
+/*
+* Stores everything about the class in the provided buffer in this format...
+*   Offset | Data
+*   -------|----------------------
+*   0      | Serializer version
+*   1      | i2c address
+*   2      | Flags
+*   3      | Wiper0 register
+*   4      | Wiper1 register
+*   5      | Conf register
+*
+* Returns the number of bytes written to the buffer.
+*/
+uint8_t DS1881::serialize(uint8_t* buf, unsigned int len) {
+  uint8_t offset = 0;
+  if (len >= DS1881_SERIALIZE_SIZE) {
+    if (initialized()) {
+      *(buf + offset++) = DS1881_SERIALIZE_VERSION;
+      *(buf + offset++) = _ADDR;
+      *(buf + offset++) = _flags & DS1881_FLAG_SERIAL_MASK;
+      *(buf + offset++) = registers[0];
+      *(buf + offset++) = registers[1];
+      *(buf + offset++) = registers[2];
+    }
+  }
+  return offset;
+}
+
+
+int8_t DS1881::unserialize(const uint8_t* buf, const unsigned int len) {
+  uint8_t offset = 0;
+  uint8_t expected_sz = 255;
+  if (len >= DS1881_SERIALIZE_SIZE) {
+    uint8_t vals[3] = {0, 0, 0};
+    switch (*(buf + offset++)) {
+      case DS1881_SERIALIZE_VERSION:
+        expected_sz = DS1881_SERIALIZE_SIZE;
+        offset += 1;  // We'll have already constructed with _ADDR.
+        _flags = (_flags & ~DS1881_FLAG_SERIAL_MASK) | (*(buf + offset++) & DS1881_FLAG_SERIAL_MASK);
+        vals[0] = *(buf + offset++);
+        vals[1] = *(buf + offset++);
+        vals[2] = *(buf + offset++);
+        break;
+      default:  // Unhandled serializer version.
+        return -1;
+    }
+    if (_ds_flag(DS1881_FLAG_INITIALIZED)) {
+      // If the device has already been initialized, we impart the new conf.
+      for (uint8_t i = 0; i < 3; i++) {
+        if (0 != _write_register(i, vals[i])) {
+          return -2;
+        }
+      }
+    }
+    else {
+      _ds_set_flag(DS1881_FLAG_FROM_BLOB);
+      for (uint8_t i = 0; i < 3; i++) {
+        registers[i] = vals[i];   // Save state for init()
+      }
+    }
+  }
+  return (expected_sz == offset) ? 0 : -1;
 }

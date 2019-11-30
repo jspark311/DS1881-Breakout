@@ -24,9 +24,20 @@ limitations under the License.
 
 #include <Arduino.h>
 
+#define DS1881_BASE_I2C_ADDR        0x28
+#define DS1881_SERIALIZE_VERSION    0x01
+#define DS1881_SERIALIZE_SIZE          6
 
-/* Hardware-defined registers */
-#define DS1881_BASE_I2C_ADDR   0x28
+
+/* Class flags. */
+#define DS1881_FLAG_PRESERVE_STATE   0x01
+#define DS1881_FLAG_ENABLED          0x02
+#define DS1881_FLAG_MUTED            0x04
+#define DS1881_FLAG_UNMUTE_ON_CHANGE 0x08
+#define DS1881_FLAG_INITIALIZED      0x10
+#define DS1881_FLAG_FROM_BLOB        0x20
+
+#define DS1881_FLAG_SERIAL_MASK      0x0F  // Only these bits are serialized.
 
 
 enum class DIGITALPOT_ERROR : int8_t {
@@ -45,7 +56,8 @@ enum class DIGITALPOT_ERROR : int8_t {
 
 class DS1881 {
   public:
-    DS1881(uint8_t address);
+    DS1881(const uint8_t address);
+    DS1881(const uint8_t* buf, const unsigned int len);
     ~DS1881();
 
     void printDebug();
@@ -59,11 +71,13 @@ class DS1881 {
     DIGITALPOT_ERROR enable(bool);                        //
     DIGITALPOT_ERROR refresh();                           // Forces a shadow refresh from hardware.
 
-    inline bool enabled() {   return _enabled; };
-
+    uint8_t serialize(uint8_t* buf, unsigned int len);
+    int8_t  unserialize(const uint8_t* buf, const unsigned int len);
     DIGITALPOT_ERROR storeWipers();
     DIGITALPOT_ERROR zerocrossWait(bool enable);
     inline bool zerocrossWait() {  return (registers[2] & 0x02);  };
+    inline bool enabled() {        return _ds_flag(DS1881_FLAG_ENABLED);      };
+    inline bool initialized() {    return _ds_flag(DS1881_FLAG_INITIALIZED);  };
 
     /* Returns the maximum value of any single potentiometer. */
     inline uint16_t getRange() {  return ((registers[2] & 0x01) ? 33 : 63);  };
@@ -73,11 +87,19 @@ class DS1881 {
 
 
   private:
-    const   uint8_t _ADDR;
-    bool    dev_init = false;
-    bool    _enabled = false;
+    const uint8_t _ADDR;
+    uint8_t _flags        = 0;
     uint8_t registers[3]  = {0, 0, 0};
     uint8_t alt_values[2] = {0, 0};
+
+    inline bool _from_blob() {   return _ds_flag(DS1881_FLAG_FROM_BLOB);  };
+    inline bool _ds_flag(uint8_t _flag) {       return (_flags & _flag);  };
+    inline void _ds_clear_flag(uint16_t _flag) { _flags &= ~_flag;        };
+    inline void _ds_set_flag(uint16_t _flag) {   _flags |= _flag;         };
+    inline void _ds_set_flag(uint8_t _flag, bool nu) {
+      if (nu) _flags |= _flag;
+      else    _flags &= ~_flag;
+    };
 
     int8_t _read_registers();
     int8_t _write_register(uint8_t reg, uint8_t val);

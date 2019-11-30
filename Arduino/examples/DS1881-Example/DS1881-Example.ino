@@ -43,7 +43,8 @@ void printHelp() {
   Serial.print("+/-   Volume up/down for both channels at once\n");
   Serial.print("x     Refresh register shadows\n");
   Serial.print("I     Reinitialize\n");
-  Serial.print("S     Store wiper settings in NV\n");
+  Serial.print("#     Store wiper settings in NV\n");
+  Serial.print("S     Serialize\n");
   Serial.print("R/r   Set range to 63/33\n");
   Serial.print("E/e   (En/Dis)able channel (mute)/\n");
   Serial.print("Z/z   (En/Dis)able zerocross detection\n");
@@ -103,7 +104,7 @@ void loop() {
         Serial.print("enable() returns ");
         Serial.println(DS1881::errorToStr(ret));
         break;
-      case 'S':
+      case '#':
         ret = dev.storeWipers();
         Serial.print("storeWipers() returns ");
         Serial.println(DS1881::errorToStr(ret));
@@ -123,6 +124,25 @@ void loop() {
         ret = dev.refresh();
         Serial.print("refresh() returns ");
         Serial.println(DS1881::errorToStr(ret));
+        break;
+      case 'S':   // Save the state into a buffer for later reconstitution.
+        {
+          uint8_t buffer[DS1881_SERIALIZE_SIZE];
+          uint8_t written = dev.serialize(buffer, DS1881_SERIALIZE_SIZE);
+          if (DS1881_SERIALIZE_SIZE == written) {
+            for (uint8_t i = 0; i < DS1881_SERIALIZE_SIZE; i++) {
+              Serial.print(buffer[i], HEX);
+              Serial.print(" ");
+            }
+            Serial.println();
+          }
+          else {
+            Serial.print("serialize() returns ");
+            Serial.print(written);
+            Serial.print(". Was expecting ");
+            Serial.println(DS1881_SERIALIZE_SIZE);
+          }
+        }
         break;
       case 'i':  dev.printDebug();      break;
       case '?':  printHelp();           break;
