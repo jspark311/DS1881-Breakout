@@ -23,7 +23,7 @@ DS1881 example.
 /*******************************************************************************
 * Globals
 *******************************************************************************/
-DS1881 dev(DS1881_BASE_I2C_ADDR);
+DS1881 ds1881(DS1881_BASE_I2C_ADDR);
 
 
 /*******************************************************************************
@@ -61,7 +61,7 @@ void setup() {
   Wire.setSDA(SDA_PIN);
   Wire.setSCL(SCL_PIN);
   Wire.begin();
-  dev.init(&Wire);
+  ds1881.init(&Wire);
 }
 
 
@@ -76,59 +76,59 @@ void loop() {
     switch (c) {
       case '[':
       case ']':
-        ret = dev.setValue(0, dev.getValue(0) + (('[' == c) ? 1 : -1));
+        ret = ds1881.setValue(0, ds1881.getValue(0) + (('[' == c) ? 1 : -1));
         Serial.print("setValue() returns ");
         Serial.println(DS1881::errorToStr(ret));
         break;
       case '{':
       case '}':
-        ret = dev.setValue(1, dev.getValue(1) + (('{' == c) ? 1 : -1));
+        ret = ds1881.setValue(1, ds1881.getValue(1) + (('{' == c) ? 1 : -1));
         Serial.print("setValue() returns ");
         Serial.println(DS1881::errorToStr(ret));
         break;
       case '-':
       case '+':
-        ret = dev.setValue(dev.getValue(0) + (('-' == c) ? 1 : -1));
+        ret = ds1881.setValue(ds1881.getValue(0) + (('-' == c) ? 1 : -1));
         Serial.print("setValue() returns ");
         Serial.println(DS1881::errorToStr(ret));
         break;
       case 'Z':
       case 'z':
-        ret = dev.zerocrossWait('Z' == c);
+        ret = ds1881.zerocrossWait('Z' == c);
         Serial.print("zerocrossWait() returns ");
         Serial.println(DS1881::errorToStr(ret));
         break;
       case 'E':
       case 'e':
-        ret = dev.enable('E' == c);
+        ret = ds1881.enable('E' == c);
         Serial.print("enable() returns ");
         Serial.println(DS1881::errorToStr(ret));
         break;
       case '#':
-        ret = dev.storeWipers();
+        ret = ds1881.storeWipers();
         Serial.print("storeWipers() returns ");
         Serial.println(DS1881::errorToStr(ret));
         break;
       case 'R':
       case 'r':
-        ret = dev.setRange(('R' == c) ? 63 : 33);
+        ret = ds1881.setRange(('R' == c) ? 63 : 33);
         Serial.print("setRange() returns ");
         Serial.println(DS1881::errorToStr(ret));
         break;
       case 'I':
-        ret = dev.init();
+        ret = ds1881.init();
         Serial.print("init() returns ");
         Serial.println(DS1881::errorToStr(ret));
         break;
       case 'x':
-        ret = dev.refresh();
+        ret = ds1881.refresh();
         Serial.print("refresh() returns ");
         Serial.println(DS1881::errorToStr(ret));
         break;
       case 'S':   // Save the state into a buffer for later reconstitution.
         {
           uint8_t buffer[DS1881_SERIALIZE_SIZE];
-          uint8_t written = dev.serialize(buffer, DS1881_SERIALIZE_SIZE);
+          uint8_t written = ds1881.serialize(buffer, DS1881_SERIALIZE_SIZE);
           if (DS1881_SERIALIZE_SIZE == written) {
             for (uint8_t i = 0; i < DS1881_SERIALIZE_SIZE; i++) {
               Serial.print(buffer[i], HEX);
@@ -144,7 +144,7 @@ void loop() {
           }
         }
         break;
-      case 'i':  dev.printDebug();      break;
+      case 'i':  ds1881.printDebug();      break;
       case '?':  printHelp();           break;
     }
   }
