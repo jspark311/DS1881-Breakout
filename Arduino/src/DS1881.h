@@ -22,8 +22,14 @@ limitations under the License.
 #ifndef __DS1881_DRIVER_H__
 #define __DS1881_DRIVER_H__
 
-#include <Arduino.h>
-#include <Wire.h>
+#include <inttypes.h>
+#include <stdlib.h>
+#ifdef ARDUINO
+  #include "Arduino.h"
+  #include <Wire.h>
+#else
+#endif
+
 
 #define DS1881_BASE_I2C_ADDR        0x28
 #define DS1881_SERIALIZE_VERSION    0x01
