@@ -115,7 +115,7 @@ DIGITALPOT_ERROR DS1881::init(TwoWire* b) {
     uint8_t vals[3] = {0, 0, 0};
     for (uint8_t i = 0; i < 3; i++) {  vals[i] = registers[i];  }
     for (uint8_t i = 0; i < 3; i++) {
-      if (0 != _write_register(i, vals[i])) {
+      if (0 != _write_register(i << 6, vals[i])) {
         return DIGITALPOT_ERROR::BUS;
       }
     }
@@ -293,9 +293,9 @@ uint8_t DS1881::serialize(uint8_t* buf, unsigned int len) {
       *(buf + offset++) = DS1881_SERIALIZE_VERSION;
       *(buf + offset++) = _ADDR;
       *(buf + offset++) = _flags & DS1881_FLAG_SERIAL_MASK;
-      *(buf + offset++) = registers[0];
-      *(buf + offset++) = registers[1];
-      *(buf + offset++) = registers[2];
+      for (uint8_t i = 0; i < 3; i++) {
+        *(buf + offset++) = registers[i];
+      }
     }
   }
   return offset;
@@ -322,7 +322,7 @@ int8_t DS1881::unserialize(const uint8_t* buf, const unsigned int len) {
     if (_ds_flag(DS1881_FLAG_INITIALIZED)) {
       // If the device has already been initialized, we impart the new conf.
       for (uint8_t i = 0; i < 3; i++) {
-        if (0 != _write_register(i, vals[i])) {
+        if (0 != _write_register(i << 6, vals[i])) {
           return -2;
         }
       }
