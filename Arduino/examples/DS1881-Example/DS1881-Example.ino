@@ -6,10 +6,16 @@ Date:   2019.10.20
 DS1881 example.
 */
 
+#define TEST_PROG_VERSION "v1.1"
+
 #include <Wire.h>
 #include <DS1881.h>
-
-#define TEST_PROG_VERSION "v1.0"
+#if defined(DS1881_DEBUG)
+  // If debugging is enabled in the build, another dependency will be needed.
+  // It can be disabled in the driver's header file.
+  // https://github.com/jspark311/CppPotpourri
+  #include <StringBuilder.h>
+#endif  // DS1881_DEBUG
 
 
 /*******************************************************************************
@@ -35,7 +41,9 @@ void printHelp() {
   Serial.print(TEST_PROG_VERSION);
   Serial.print("\n---< Meta >-------------------------\n");
   Serial.print("?     This output\n");
+  #if defined(DS1881_DEBUG)
   Serial.print("i     DS1881E info\n");
+  #endif
 
   Serial.print("\n---< Channel Manipulation >-----------\n");
   Serial.print("[/]   Volume up/down for channel 0\n");
@@ -145,8 +153,17 @@ void loop() {
           }
         }
         break;
-      case 'i':  ds1881.printDebug();      break;
+
       case '?':  printHelp();           break;
+      #if defined(DS1881_DEBUG)
+      case 'i':
+        {
+          StringBuilder output;
+          ds1881.printDebug(&output);
+          Serial.print((char*) output.string());
+        }
+        break;
+      #endif
     }
   }
 }

@@ -44,6 +44,23 @@ const char* const DS1881::errorToStr(DIGITALPOT_ERROR err) {
   }
 }
 
+// Everytime you macro a function, baby Jesus cries.
+inline float    strict_max(float    a, float    b) {  return (a > b) ? a : b; };
+inline uint32_t strict_max(uint32_t a, uint32_t b) {  return (a > b) ? a : b; };
+inline uint16_t strict_max(uint16_t a, uint16_t b) {  return (a > b) ? a : b; };
+inline uint8_t  strict_max(uint8_t  a, uint8_t  b) {  return (a > b) ? a : b; };
+inline int32_t  strict_max(int32_t  a, int32_t  b) {  return (a > b) ? a : b; };
+inline int16_t  strict_max(int16_t  a, int16_t  b) {  return (a > b) ? a : b; };
+inline int8_t   strict_max(int8_t   a, int8_t   b) {  return (a > b) ? a : b; };
+
+inline float    strict_min(float    a, float    b) {  return (a < b) ? a : b; };
+inline uint32_t strict_min(uint32_t a, uint32_t b) {  return (a < b) ? a : b; };
+inline uint16_t strict_min(uint16_t a, uint16_t b) {  return (a < b) ? a : b; };
+inline uint8_t  strict_min(uint8_t  a, uint8_t  b) {  return (a < b) ? a : b; };
+inline int32_t  strict_min(int32_t  a, int32_t  b) {  return (a < b) ? a : b; };
+inline int16_t  strict_min(int16_t  a, int16_t  b) {  return (a < b) ? a : b; };
+inline int8_t   strict_min(int8_t   a, int8_t   b) {  return (a < b) ? a : b; };
+
 
 /*******************************************************************************
 *   ___ _              ___      _ _              _      _
@@ -64,37 +81,6 @@ DS1881::DS1881(const uint8_t* buf, const unsigned int len) : _ADDR(*(buf + 1)) {
 
 DS1881::~DS1881() {
 }
-
-
-/*
-* Dump this item to the dev log.
-*/
-void DS1881::printDebug() {
-  Serial.print("DS1881 digital potentiometer");
-
-  if (!initialized()) {
-    Serial.println("\tNot initialized\n");
-    return;
-  }
-
-  for (int i = 0; i < 2; i++) {
-    Serial.print("\n\tPOT ");
-    Serial.print(i);
-    Serial.print(": ");
-    Serial.print(0x3F & registers[i], DEC);
-  }
-  Serial.print("\n\tCONF:  0x");
-  Serial.print((int8_t) registers[2], HEX);
-  Serial.print("\n\talt_values[0]:  ");
-  Serial.print((int8_t) alt_values[0], DEC);
-  Serial.print("\n\talt_values[1]:  ");
-  Serial.print((int8_t) alt_values[1], DEC);
-  Serial.print("\n\tRange:          ");
-  Serial.print(getRange(), DEC);
-  Serial.print("\n\tZero-cross:     ");
-  Serial.println((zerocrossWait()) ? "Enabled":"Disabled");
-}
-
 
 
 /*******************************************************************************
@@ -143,7 +129,7 @@ DIGITALPOT_ERROR DS1881::setValue(uint8_t pot, uint8_t val) {
 
   DIGITALPOT_ERROR ret = (0 == val) ? DIGITALPOT_ERROR::PEGGED_MAX : DIGITALPOT_ERROR::NO_ERROR;
   uint8_t range = (uint8_t) getRange();
-  uint8_t tmp_val = min(val, range);
+  uint8_t tmp_val = strict_min(val, range);
   if (range == tmp_val) {
     ret = (tmp_val == val) ? DIGITALPOT_ERROR::PEGGED_MIN : DIGITALPOT_ERROR::ALREADY_AT_MIN;
   }
@@ -336,3 +322,23 @@ int8_t DS1881::unserialize(const uint8_t* buf, const unsigned int len) {
   }
   return (expected_sz == offset) ? 0 : -1;
 }
+
+
+#if defined(DS1881_DEBUG)
+/*
+* Dump this item to the given buffer.
+*/
+void DS1881::printDebug(StringBuilder* output) {
+  output->concatf("DS1881 digital potentiometer\n");
+  output->concatf("\tInitialized:    %c\n", initialized() ? 'y' : 'n');
+  if (initialized()) {
+    output->concatf("\tCONF:           0x%02x\n", registers[2]);
+    output->concatf("\tRange:          %u\n", getRange());
+    output->concatf("\tZero-cross:     %c\n", zerocrossWait() ? "Enabled":"Disabled");
+    for (int i = 0; i < 2; i++) {
+      output->concatf("\tPOT %u:  %u  (Alt: %u)\n", i, 0x3F & registers[i], alt_values[i]);
+    }
+  }
+}
+
+#endif  // DS1881_DEBUG

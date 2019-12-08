@@ -22,13 +22,25 @@ limitations under the License.
 #ifndef __DS1881_DRIVER_H__
 #define __DS1881_DRIVER_H__
 
+
+// If debugging is enabled in the build, another dependency will be needed.
+// https://github.com/jspark311/CppPotpourri
+#define DS1881_DEBUG 1
+
 #include <inttypes.h>
 #include <stdlib.h>
+#include <Wire.h>
 #ifdef ARDUINO
   #include "Arduino.h"
-  #include <Wire.h>
 #else
 #endif
+
+
+#if defined(DS1881_DEBUG)
+  // If debugging is enabled in the build, another dependency will be needed.
+  // https://github.com/jspark311/CppPotpourri
+  #include <StringBuilder.h>
+#endif  // DS1881_DEBUG
 
 
 #define DS1881_BASE_I2C_ADDR        0x28
@@ -67,7 +79,9 @@ class DS1881 {
     DS1881(const uint8_t* buf, const unsigned int len);
     ~DS1881();
 
-    void printDebug();
+    #if defined(DS1881_DEBUG)
+      void printDebug(StringBuilder*);
+    #endif  // DS1881_DEBUG
 
     inline uint8_t getValue(uint8_t pot) {
       return (pot > 1) ? 0 : 0x3F & registers[pot];
