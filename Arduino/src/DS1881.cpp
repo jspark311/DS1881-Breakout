@@ -334,7 +334,7 @@ void DS1881::printDebug(StringBuilder* output) {
   if (initialized()) {
     output->concatf("\tCONF:           0x%02x\n", registers[2]);
     output->concatf("\tRange:          %u\n", getRange());
-    output->concatf("\tZero-cross:     %c\n", zerocrossWait() ? "Enabled":"Disabled");
+    output->concatf("\tZero-cross:     %c\n", zerocrossWait() ? 'y' : 'n');
     for (int i = 0; i < 2; i++) {
       output->concatf("\tPOT %u:  %u  (Alt: %u)\n", i, 0x3F & registers[i], alt_values[i]);
     }
